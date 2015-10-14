@@ -40,10 +40,6 @@ import java.util.Map;
  * {@linkplain #bind(Object, android.app.Dialog) dialog}.
  * <p>
  * Group multiple views together into a {@link List} or array.
- * <pre><code>
- * {@literal @}Bind({R.id.first_name, R.id.middle_name, R.id.last_name})
- * List<EditText> nameViews;
- * </code></pre>
  * There are three convenience methods for working with view collections:
  * <ul>
  * <li>{@link #apply(List, Action)} &ndash; Applies an action to each view.</li>
@@ -83,7 +79,6 @@ public final class ButterKnife {
     throw new AssertionError("No instances.");
   }
 
-  /** An unbinder contract that can be bind with {@link butterknife.Unbinder}. */
   @SuppressWarnings("unused") // Used by generated code.
   public interface Unbinder {
     void unbind();

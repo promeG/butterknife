@@ -18,4 +18,5 @@ import static java.lang.annotation.RetentionPolicy.CLASS;
 public @interface Bind {
   /** View ID to which the field will be bound. */
   @IdRes int[] value();
+  String idName() default "";
 }
