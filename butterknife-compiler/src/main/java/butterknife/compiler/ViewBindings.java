@@ -1,7 +1,5 @@
 package butterknife.compiler;
 
-import butterknife.internal.ListenerClass;
-import butterknife.internal.ListenerMethod;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -10,14 +8,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import butterknife.internal.ListenerClass;
+import butterknife.internal.ListenerMethod;
+
 final class ViewBindings {
   private final int id;
+  private final String resName;
   private final Set<FieldViewBinding> fieldBindings = new LinkedHashSet<>();
   private final LinkedHashMap<ListenerClass, Map<ListenerMethod, Set<MethodViewBinding>>>
       methodBindings = new LinkedHashMap<>();
 
   ViewBindings(int id) {
     this.id = id;
+    this.resName = "";
+  }
+
+  ViewBindings(String resName) {
+    this.id = -1;
+    this.resName = resName;
+  }
+
+  public String getResName() {
+    return resName;
   }
 
   public int getId() {

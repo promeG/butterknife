@@ -12,7 +12,13 @@ public enum Finder {
       return ((View) source).findViewById(id);
     }
 
-    @Override public Context getContext(Object source) {
+      @Override
+      protected View findView(Object source, String resName) {
+          int viewId = ((View) source).getResources().getIdentifier(resName, "id", ((View) source).getContext().getPackageName());
+          return ((View) source).findViewById(viewId);
+      }
+
+      @Override public Context getContext(Object source) {
       return ((View) source).getContext();
     }
 
@@ -30,7 +36,14 @@ public enum Finder {
       return ((Activity) source).findViewById(id);
     }
 
-    @Override public Context getContext(Object source) {
+      @Override
+      protected View findView(Object source, String resName) {
+          int viewId = ((Activity) source).getResources().getIdentifier(resName, "id",
+                  ((Activity) source).getPackageName());
+          return ((Activity) source).findViewById(viewId);
+      }
+
+      @Override public Context getContext(Object source) {
       return (Activity) source;
     }
   },
@@ -39,7 +52,14 @@ public enum Finder {
       return ((Dialog) source).findViewById(id);
     }
 
-    @Override public Context getContext(Object source) {
+      @Override
+      protected View findView(Object source, String resName) {
+          int viewId = ((Dialog) source).getContext().getResources().getIdentifier(resName, "id",
+                  ((Dialog) source).getContext().getPackageName());
+          return ((Dialog) source).findViewById(viewId);
+      }
+
+      @Override public Context getContext(Object source) {
       return ((Dialog) source).getContext();
     }
   };
@@ -60,9 +80,30 @@ public enum Finder {
     return view;
   }
 
+    public <T> T findRequiredView(Object source, String resName, String who) {
+    T view = findOptionalView(source, resName, who);
+    if (view == null) {
+      String name = getResourceEntryName(source, resName);
+      throw new IllegalStateException("Required view '"
+          + name
+          + "' with resName "
+          + resName
+          + " for "
+          + who
+          + " was not found. If this view is optional add '@Nullable' (fields) or '@Optional'"
+          + " (methods) annotation.");
+    }
+    return view;
+  }
+
   public <T> T findOptionalView(Object source, int id, String who) {
     View view = findView(source, id);
     return castView(view, id, who);
+  }
+
+  public <T> T findOptionalView(Object source, String resName, String who) {
+    View view = findView(source, resName);
+    return castView(view, resName, who);
   }
 
   @SuppressWarnings("unchecked") // That's the point.
@@ -78,6 +119,26 @@ public enum Finder {
           + name
           + "' with ID "
           + id
+          + " for "
+          + who
+          + " was of the wrong type. See cause for more info.", e);
+    }
+  }
+
+
+  @SuppressWarnings("unchecked") // That's the point.
+  public <T> T castView(View view, String resName, String who) {
+    try {
+      return (T) view;
+    } catch (ClassCastException e) {
+      if (who == null) {
+        throw new AssertionError();
+      }
+      String name = getResourceEntryName(view, resName);
+      throw new IllegalStateException("View '"
+          + name
+          + "' with resName "
+          + resName
           + " for "
           + who
           + " was of the wrong type. See cause for more info.", e);
@@ -105,7 +166,13 @@ public enum Finder {
     return getContext(source).getResources().getResourceEntryName(id);
   }
 
+  protected String getResourceEntryName(Object source, String resName) {
+    return resName;
+  }
+
   protected abstract View findView(Object source, int id);
+
+  protected abstract View findView(Object source, String resName);
 
   public abstract Context getContext(Object source);
 }

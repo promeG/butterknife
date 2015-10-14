@@ -10,7 +10,6 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import butterknife.Unbinder;
 import java.util.List;
 
 import butterknife.Bind;
@@ -18,8 +17,7 @@ import butterknife.ButterKnife;
 import butterknife.OnClick;
 import butterknife.OnItemClick;
 import butterknife.OnLongClick;
-
-import static android.widget.Toast.LENGTH_SHORT;
+import butterknife.Unbinder;
 
 public class SimpleActivity extends Activity {
   private static final ButterKnife.Action<View> ALPHA_FADE = new ButterKnife.Action<View>() {
@@ -32,33 +30,35 @@ public class SimpleActivity extends Activity {
     }
   };
 
-  @Bind(R.id.title) TextView title;
+  @Bind(resName="title") TextView title;
   @Bind(R.id.subtitle) TextView subtitle;
-  @Bind(R.id.hello) Button hello;
-  @Bind(R.id.list_of_things) ListView listOfThings;
+  @Bind(R.id.hello)
+  Button hello;
+  @Bind(R.id.list_of_things)
+  ListView listOfThings;
   @Bind(R.id.footer) TextView footer;
-  @Unbinder ButterKnife.Unbinder unbinder;
+  @Unbinder
+  ButterKnife.Unbinder unbinder;
 
-  @Bind({ R.id.title, R.id.subtitle, R.id.hello })
+  @Bind(resName = { "title", "subtitle", "hello" })
   List<View> headerViews;
 
   private SimpleAdapter adapter;
 
 
-  @OnClick(R.id.hello) void sayHello() {
-    Toast.makeText(this, "Hello, views!", LENGTH_SHORT).show();
+  @OnClick(resName = "hello") void sayHello() {
+    Toast.makeText(this, "Hello, views!", Toast.LENGTH_SHORT).show();
     ButterKnife.apply(headerViews, ALPHA_FADE);
   }
 
-  @OnLongClick(R.id.hello) boolean sayGetOffMe() {
-    Toast.makeText(this, "Let go of me!", LENGTH_SHORT).show();
+  @OnLongClick(resName = {"hello", "title"}) boolean sayGetOffMe() {
+    Toast.makeText(this, "Let go of me!", Toast.LENGTH_SHORT).show();
     return true;
   }
 
-  @OnItemClick(R.id.list_of_things) void onItemClick(int position) {
-    Toast.makeText(this, "You clicked: " + adapter.getItem(position), LENGTH_SHORT).show();
+  @OnItemClick(resName = "list_of_things") void onItemClick(int position) {
+    Toast.makeText(this, "You clicked: " + adapter.getItem(position), Toast.LENGTH_SHORT).show();
   }
-
   @Override protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.simple_activity);
@@ -66,6 +66,7 @@ public class SimpleActivity extends Activity {
 
     // Contrived code to use the bound fields.
     title.setText("Butter Knife");
+    ((TextView)headerViews.get(1)).setText("Butter Knife2");
     subtitle.setText("Field and method binding for Android views.");
     footer.setText("by Jake Wharton");
     hello.setText("Say Hello");

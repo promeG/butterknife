@@ -51,9 +51,9 @@ public class SimpleAdapter extends BaseAdapter {
   }
 
   static class ViewHolder {
-    @Bind(R.id.word) TextView word;
-    @Bind(R.id.length) TextView length;
-    @Bind(R.id.position) TextView position;
+    @Bind(resName = "word") TextView word;
+    @Bind(resName = "length") TextView length;
+    @Bind(resName = "position") TextView position;
 
     ViewHolder(View view) {
       ButterKnife.bind(this, view);

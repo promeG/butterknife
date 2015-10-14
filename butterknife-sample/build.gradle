@@ -20,8 +20,14 @@ android {
 
   buildTypes {
     debug {
-      minifyEnabled true
+      minifyEnabled false
     }
+  }
+}
+
+apt {
+  arguments {
+    resourcePackageName android.defaultConfig.applicationId
   }
 }
 

@@ -1,5 +1,45 @@
 package butterknife.compiler;
 
+import com.google.auto.common.SuperficialValidation;
+import com.google.auto.service.AutoService;
+
+import com.squareup.javapoet.TypeName;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.BitSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.Filer;
+import javax.annotation.processing.ProcessingEnvironment;
+import javax.annotation.processing.Processor;
+import javax.annotation.processing.RoundEnvironment;
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.ArrayType;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
+
 import butterknife.Bind;
 import butterknife.BindArray;
 import butterknife.BindBitmap;
@@ -24,42 +64,6 @@ import butterknife.Optional;
 import butterknife.Unbinder;
 import butterknife.internal.ListenerClass;
 import butterknife.internal.ListenerMethod;
-import com.google.auto.common.SuperficialValidation;
-import com.google.auto.service.AutoService;
-import com.squareup.javapoet.TypeName;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import javax.annotation.processing.AbstractProcessor;
-import javax.annotation.processing.Filer;
-import javax.annotation.processing.ProcessingEnvironment;
-import javax.annotation.processing.Processor;
-import javax.annotation.processing.RoundEnvironment;
-import javax.lang.model.SourceVersion;
-import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.Element;
-import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.Modifier;
-import javax.lang.model.element.TypeElement;
-import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.ArrayType;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeKind;
-import javax.lang.model.type.TypeMirror;
-import javax.lang.model.type.TypeVariable;
-import javax.lang.model.util.Elements;
-import javax.lang.model.util.Types;
 
 import static javax.lang.model.element.ElementKind.CLASS;
 import static javax.lang.model.element.ElementKind.INTERFACE;
@@ -99,13 +103,24 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
   private Elements elementUtils;
   private Types typeUtils;
   private Filer filer;
+  private String resourcePackageName;
+  private Validator mValidator;
 
   @Override public synchronized void init(ProcessingEnvironment env) {
     super.init(env);
+    if (env.getOptions() == null && !env.getOptions().containsKey("resourcePackageName")
+            && env.getOptions().get("resourcePackageName") == null) {
+      throw new IllegalArgumentException("must passing with resource package name parameter.");
+    }
+    resourcePackageName = env.getOptions().get("resourcePackageName");
 
     elementUtils = env.getElementUtils();
     typeUtils = env.getTypeUtils();
     filer = env.getFiler();
+    mValidator = new Validator(elementUtils, resourcePackageName);
+
+
+
   }
 
   @Override public Set<String> getSupportedAnnotationTypes() {
@@ -131,6 +146,7 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
   }
 
   @Override public boolean process(Set<? extends TypeElement> elements, RoundEnvironment env) {
+
     Map<TypeElement, BindingClass> targetClassMap = findAndParseTargets(env);
 
     for (Map.Entry<TypeElement, BindingClass> entry : targetClassMap.entrySet()) {
@@ -368,7 +384,8 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
 
     // Assemble information on the field.
     int[] ids = element.getAnnotation(Bind.class).value();
-    if (ids.length != 1) {
+    String[] idNames = element.getAnnotation(Bind.class).resName();
+    if (ids.length > 1 || idNames.length > 1) {
       error(element, "@%s for a view must only specify one ID. Found: %s. (%s.%s)",
           Bind.class.getSimpleName(), Arrays.toString(ids), enclosingElement.getQualifiedName(),
           element.getSimpleName());
@@ -379,7 +396,8 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
       return;
     }
 
-    int id = ids[0];
+    int id = ids.length == 1 ? ids[0] : -1;
+    String resName = idNames.length == 1 ? idNames[0] : "";
     BindingClass bindingClass = targetClassMap.get(enclosingElement);
     if (bindingClass != null) {
       ViewBindings viewBindings = bindingClass.getViewBinding(id);
@@ -401,8 +419,15 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     TypeName type = TypeName.get(elementType);
     boolean required = isFieldRequired(element);
 
+    if (id == NO_ID && !"".equalsIgnoreCase(resName)) {
+      if (! mValidator.containsIdValue(resName)) {
+        error(element, "Resource name : %s not exist! ", resName);
+        throw new IllegalArgumentException(String.format("Resource name : %s not exist! ", resName));
+      }
+    }
+
     FieldViewBinding binding = new FieldViewBinding(name, type, required);
-    bindingClass.addField(id, binding);
+    bindingClass.addField(id, resName, binding);
 
     // Add the type-erased version to the valid binding targets set.
     erasedTargetNames.add(enclosingElement.toString());
@@ -456,7 +481,8 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     // Assemble information on the field.
     String name = element.getSimpleName().toString();
     int[] ids = element.getAnnotation(Bind.class).value();
-    if (ids.length == 0) {
+    String[] resNames = element.getAnnotation(Bind.class).resName();
+    if (ids.length == 0 && resNames.length == 0) {
       error(element, "@%s must specify at least one ID. (%s.%s)", Bind.class.getSimpleName(),
           enclosingElement.getQualifiedName(), element.getSimpleName());
       return;
@@ -474,7 +500,18 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
 
     BindingClass bindingClass = getOrCreateTargetClass(targetClassMap, enclosingElement);
     FieldCollectionViewBinding binding = new FieldCollectionViewBinding(name, type, kind, required);
-    bindingClass.addFieldCollection(ids, binding);
+    if (ids.length == 1 && ids[0] == -1 && !"".equalsIgnoreCase(resNames[0])) {
+      // using resNames
+      for (String resName : resNames){
+        if (! mValidator.containsIdValue(resName)) {
+          error(element, "Resource name : %s not exist! ", resName);
+          throw new IllegalArgumentException(String.format("Resource name : %s not exist! ", resName));
+        }
+      }
+      bindingClass.addFieldCollection(resNames, binding);
+    } else {
+      bindingClass.addFieldCollection(ids, binding);
+    }
 
     erasedTargetNames.add(enclosingElement.toString());
   }
@@ -865,12 +902,14 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     // Assemble information on the method.
     Annotation annotation = element.getAnnotation(annotationClass);
     Method annotationValue = annotationClass.getDeclaredMethod("value");
+    Method annotationResName = annotationClass.getDeclaredMethod("resName");
     if (annotationValue.getReturnType() != int[].class) {
       throw new IllegalStateException(
           String.format("@%s annotation value() type not int[].", annotationClass));
     }
 
     int[] ids = (int[]) annotationValue.invoke(annotation);
+    String[] resNames = (String[]) annotationResName.invoke(annotation);
     String name = executableElement.getSimpleName().toString();
     boolean required = isListenerRequired(executableElement);
 
@@ -894,7 +933,7 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     }
 
     for (int id : ids) {
-      if (id == NO_ID) {
+      if (false && id == NO_ID) { // TODO enable check
         if (ids.length == 1) {
           if (!required) {
             error(element, "ID-free binding must not be annotated with @Optional. (%s.%s)",
@@ -1038,9 +1077,27 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     MethodViewBinding binding = new MethodViewBinding(name, Arrays.asList(parameters), required);
     BindingClass bindingClass = getOrCreateTargetClass(targetClassMap, enclosingElement);
     for (int id : ids) {
+      if (id == NO_ID) {
+        continue;
+      }
       if (!bindingClass.addMethod(id, listener, method, binding)) {
         error(element, "Multiple listener methods with return value specified for ID %d. (%s.%s)",
             id, enclosingElement.getQualifiedName(), element.getSimpleName());
+        return;
+      }
+    }
+
+    for (String resName : resNames) {
+      if ("".equalsIgnoreCase(resName)) {
+        continue;
+      }
+      if (! mValidator.containsIdValue(resName)) {
+        error(element, "Resource name : %s not exist! ", resName);
+        throw new IllegalArgumentException(String.format("Resource name : %s not exist! ", resName));
+      }
+      if (!bindingClass.addMethod(resName, listener, method, binding)) {
+        error(element, "Multiple listener methods with return value specified for resName %d. (%s.%s)",
+                resName, enclosingElement.getQualifiedName(), element.getSimpleName());
         return;
       }
     }

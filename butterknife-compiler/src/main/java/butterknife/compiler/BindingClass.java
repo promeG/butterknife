@@ -1,7 +1,5 @@
 package butterknife.compiler;
 
-import butterknife.internal.ListenerClass;
-import butterknife.internal.ListenerMethod;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -12,6 +10,7 @@ import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 import com.squareup.javapoet.TypeVariableName;
 import com.squareup.javapoet.WildcardTypeName;
+
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,6 +20,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import butterknife.internal.ListenerClass;
+import butterknife.internal.ListenerMethod;
 
 import static butterknife.compiler.ButterKnifeProcessor.NO_ID;
 import static butterknife.compiler.ButterKnifeProcessor.VIEW_TYPE;
@@ -43,7 +45,9 @@ final class BindingClass {
       ClassName.get("android.graphics", "BitmapFactory");
 
   private final Map<Integer, ViewBindings> viewIdMap = new LinkedHashMap<>();
+  private final Map<String, ViewBindings> viewNameMap = new LinkedHashMap<>();
   private final Map<FieldCollectionViewBinding, int[]> collectionBindings = new LinkedHashMap<>();
+  private final Map<FieldCollectionViewBinding, String[]> collectionNameBindings = new LinkedHashMap<>();
   private final List<FieldBitmapBinding> bitmapBindings = new ArrayList<>();
   private final List<FieldDrawableBinding> drawableBindings = new ArrayList<>();
   private final List<FieldResourceBinding> resourceBindings = new ArrayList<>();
@@ -71,17 +75,35 @@ final class BindingClass {
     drawableBindings.add(binding);
   }
 
-  void addField(int id, FieldViewBinding binding) {
-    getOrCreateViewBindings(id).addFieldBinding(binding);
+  void addField(int id, String resName, FieldViewBinding binding) {
+    if (id != -1) {
+      getOrCreateViewBindings(id).addFieldBinding(binding);
+    } else {
+      getOrCreateViewBindings(resName).addFieldBinding(binding);
+    }
   }
 
   void addFieldCollection(int[] ids, FieldCollectionViewBinding binding) {
     collectionBindings.put(binding, ids);
   }
 
+  void addFieldCollection(String[] resNames, FieldCollectionViewBinding binding) {
+    collectionNameBindings.put(binding, resNames);
+  }
+
   boolean addMethod(int id, ListenerClass listener, ListenerMethod method,
       MethodViewBinding binding) {
     ViewBindings viewBindings = getOrCreateViewBindings(id);
+    if (viewBindings.hasMethodBinding(listener, method) && !"void".equals(method.returnType())) {
+      return false;
+    }
+    viewBindings.addMethodBinding(listener, method, binding);
+    return true;
+  }
+
+  boolean addMethod(String resName, ListenerClass listener, ListenerMethod method,
+      MethodViewBinding binding) {
+    ViewBindings viewBindings = getOrCreateViewBindings(resName);
     if (viewBindings.hasMethodBinding(listener, method) && !"void".equals(method.returnType())) {
       return false;
     }
@@ -106,6 +128,15 @@ final class BindingClass {
     if (viewId == null) {
       viewId = new ViewBindings(id);
       viewIdMap.put(id, viewId);
+    }
+    return viewId;
+  }
+
+  private ViewBindings getOrCreateViewBindings(String resName) {
+    ViewBindings viewId = viewNameMap.get(resName);
+    if (viewId == null) {
+      viewId = new ViewBindings(resName);
+      viewNameMap.put(resName, viewId);
     }
     return viewId;
   }
@@ -153,9 +184,11 @@ final class BindingClass {
         .addAnnotation(Override.class)
         .addModifiers(PUBLIC);
 
+
     // Throw exception if unbind called twice.
     unbindMethod.addStatement("if (target == null) throw new $T($S)", IllegalStateException.class,
-        "Bindings already cleared.");
+            "Bindings already cleared.");
+
 
     for (ViewBindings bindings : viewIdMap.values()) {
       addFieldAndUnbindStatement(result, unbindMethod, bindings);
@@ -164,13 +197,28 @@ final class BindingClass {
       }
     }
 
+
     for (FieldCollectionViewBinding fieldCollectionBinding : collectionBindings.keySet()) {
       unbindMethod.addStatement("target.$L = null", fieldCollectionBinding.getName());
     }
 
+
+    for (ViewBindings bindings : viewNameMap.values()) {
+      addFieldAndUnbindStatement(result, unbindMethod, bindings);
+      for (FieldViewBinding fieldBinding : bindings.getFieldBindings()) {
+        unbindMethod.addStatement("target.$L = null", fieldBinding.getName());
+      }
+    }
+
+    for (FieldCollectionViewBinding fieldCollectionBinding : collectionNameBindings.keySet()) {
+      unbindMethod.addStatement("target.$L = null", fieldCollectionBinding.getName());
+    }
+
+
     unbindMethod.addStatement("target.$L = null", unbinderBinding.getUnbinderFieldName());
     unbindMethod.addStatement("target = null");
     result.addMethod(unbindMethod.build());
+
 
     return result.build();
   }
@@ -185,7 +233,7 @@ final class BindingClass {
     }
 
     // Using view id for name uniqueness.
-    String fieldName = "view" + bindings.getId();
+    String fieldName = "view" + ( bindings.getId() == -1 ? bindings.getResName() : bindings.getId());
     result.addField(VIEW, fieldName);
 
     // We only need to emit the null check if there are zero required bindings.
@@ -234,9 +282,11 @@ final class BindingClass {
           unbinderBinding.getUnbinderClassName(), "target");
     }
 
+    boolean isViewDecleared = false;
     if (!viewIdMap.isEmpty() || !collectionBindings.isEmpty()) {
       // Local variable in which all views will be temporarily stored.
       result.addStatement("$T view", VIEW);
+      isViewDecleared = true;
 
       // Loop over each view bindings and emit it.
       for (ViewBindings bindings : viewIdMap.values()) {
@@ -245,6 +295,23 @@ final class BindingClass {
 
       // Loop over each collection binding and emit it.
       for (Map.Entry<FieldCollectionViewBinding, int[]> entry : collectionBindings.entrySet()) {
+        emitCollectionBinding(result, entry.getKey(), entry.getValue());
+      }
+    }
+
+    if (!viewNameMap.isEmpty() || !collectionNameBindings.isEmpty()) {
+      // Local variable in which all views will be temporarily stored.
+      if (!isViewDecleared) {
+        result.addStatement("$T view", VIEW);
+      }
+
+      // Loop over each view bindings and emit it.
+      for (ViewBindings bindings : viewNameMap.values()) {
+        addViewBindings(result, bindings);
+      }
+
+      // Loop over each collection binding and emit it.
+      for (Map.Entry<FieldCollectionViewBinding, String[]> entry : collectionNameBindings.entrySet()) {
         emitCollectionBinding(result, entry.getKey(), entry.getValue());
       }
     }
@@ -321,13 +388,42 @@ final class BindingClass {
     result.addStatement("target.$L = $T.$L($L)", binding.getName(), UTILS, ofName, builder.build());
   }
 
+  private void emitCollectionBinding(MethodSpec.Builder result, FieldCollectionViewBinding binding,
+      String[] resNames) {
+    String ofName;
+    switch (binding.getKind()) {
+      case ARRAY:
+        ofName = "arrayOf";
+        break;
+      case LIST:
+        ofName = "listOf";
+        break;
+      default:
+        throw new IllegalStateException("Unknown kind: " + binding.getKind());
+    }
+
+    CodeBlock.Builder builder = CodeBlock.builder();
+    for (int i = 0; i < resNames.length; i++) {
+      if (i > 0) {
+        builder.add(", ");
+      }
+      String findMethod = binding.isRequired() ? "findRequiredView" : "findOptionalView";
+      builder.add("\nfinder.<$T>$L(source, $S, $S)", binding.getType(), findMethod, resNames[i],
+          asHumanDescription(singletonList(binding)));
+    }
+
+    result.addStatement("target.$L = $T.$L($L)", binding.getName(), UTILS, ofName, builder.build());
+  }
+
   private void addViewBindings(MethodSpec.Builder result, ViewBindings bindings) {
     List<ViewBinding> requiredViewBindings = bindings.getRequiredBindings();
     if (requiredViewBindings.isEmpty()) {
       result.addStatement("view = finder.findOptionalView(source, $L, null)", bindings.getId());
     } else {
-      if (bindings.getId() == NO_ID) {
-        result.addStatement("view = target");
+      if (bindings.getId() == NO_ID && !"".equalsIgnoreCase(bindings.getResName())) {
+        // using resName instead of id
+        result.addStatement("view = finder.findRequiredView(source, $S, $S)", bindings.getResName(),
+                asHumanDescription(requiredViewBindings));
       } else {
         result.addStatement("view = finder.findRequiredView(source, $L, $S)", bindings.getId(),
             asHumanDescription(requiredViewBindings));
@@ -342,8 +438,14 @@ final class BindingClass {
     Collection<FieldViewBinding> fieldBindings = bindings.getFieldBindings();
     for (FieldViewBinding fieldBinding : fieldBindings) {
       if (fieldBinding.requiresCast()) {
-        result.addStatement("target.$L = finder.castView(view, $L, $S)", fieldBinding.getName(),
-            bindings.getId(), asHumanDescription(fieldBindings));
+        if (bindings.getId() == NO_ID && !"".equalsIgnoreCase(bindings.getResName())) {
+          // using resName instead of id
+          result.addStatement("target.$L = finder.castView(view, $S, $S)", fieldBinding.getName(),
+                  bindings.getResName(), asHumanDescription(fieldBindings));
+        } else {
+          result.addStatement("target.$L = finder.castView(view, $L, $S)", fieldBinding.getName(),
+                  bindings.getId(), asHumanDescription(fieldBindings));
+        }
       } else {
         result.addStatement("target.$L = view", fieldBinding.getName());
       }
@@ -365,7 +467,7 @@ final class BindingClass {
 
     // Add the view reference to the unbinder.
     if (hasUnbinder()) {
-      result.addStatement("unbinder.$L = view", "view" + bindings.getId());
+      result.addStatement("unbinder.$L = view", "view" + ( bindings.getId() == -1 ? bindings.getResName() : bindings.getId()));
     }
 
     for (Map.Entry<ListenerClass, Map<ListenerMethod, Set<MethodViewBinding>>> e
