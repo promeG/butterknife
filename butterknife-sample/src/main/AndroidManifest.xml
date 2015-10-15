@@ -3,11 +3,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.butterknife">
+    <uses-sdk android:minSdkVersion='14' android:targetSdkVersion='22'/>
 
   <application
       android:allowBackup="false"
       android:label="@string/app_name"
-      android:name=".SimpleApp"
+      android:name=".AppShell"
       tools:ignore="MissingApplicationIcon">
 
     <activity

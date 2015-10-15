@@ -112,7 +112,8 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
             && env.getOptions().get("resourcePackageName") == null) {
       throw new IllegalArgumentException("must passing with resource package name parameter.");
     }
-    resourcePackageName = env.getOptions().get("resourcePackageName");
+    //resourcePackageName = env.getOptions().get("resourcePackageName");
+    resourcePackageName = "com.example.butterknife";
 
     elementUtils = env.getElementUtils();
     typeUtils = env.getTypeUtils();

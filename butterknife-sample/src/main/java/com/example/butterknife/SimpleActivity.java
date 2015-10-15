@@ -31,12 +31,12 @@ public class SimpleActivity extends Activity {
   };
 
   @Bind(resName="title") TextView title;
-  @Bind(R.id.subtitle) TextView subtitle;
-  @Bind(R.id.hello)
+  @Bind(resName = "subtitle") TextView subtitle;
+  @Bind(resName = "hello")
   Button hello;
-  @Bind(R.id.list_of_things)
+  @Bind(resName = "list_of_things")
   ListView listOfThings;
-  @Bind(R.id.footer) TextView footer;
+  @Bind(resName = "footer") TextView footer;
   @Unbinder
   ButterKnife.Unbinder unbinder;
 
